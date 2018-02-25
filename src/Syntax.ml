@@ -1,7 +1,7 @@
 (* Opening a library for generic programming (https://github.com/dboulytchev/GT).
    The library provides "@type ..." syntax extension and plugins like show, etc.
 *)
-(*open GT*)
+open GT
 
 (* Simple expressions: syntax and semantics *)
 module Expr =
@@ -10,10 +10,10 @@ module Expr =
     (* The type for expressions. Note, in regular OCaml there is no "@type..."
        notation, it came from GT.
     *)
-    (*@ *) type t =
+    @type t =
     (* integer constant *) | Const of int
     (* variable         *) | Var   of string
-    (* binary operator  *) | Binop of string * t * t (* with show *)
+    (* binary operator  *) | Binop of string * t * t with show
 
     (* Available binary operators:
         !!                   --- disjunction
@@ -82,11 +82,11 @@ module Stmt =
   struct
 
     (* The type for statements *)
-    (*@*)type t =
+    @type t =
     (* read into the variable           *) | Read   of string
     (* write the value of an expression *) | Write  of Expr.t
     (* assignment                       *) | Assign of string * Expr.t
-    (* composition                      *) | Seq    of t * t (* with show*)
+    (* composition                      *) | Seq    of t * t with show
 
     (* The type of configuration: a state, an input stream, an output stream *)
     type config = Expr.state * int list * int list
