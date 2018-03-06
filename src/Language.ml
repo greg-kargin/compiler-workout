@@ -83,24 +83,21 @@ module Expr =
          IDENT   --- a non-empty identifier a-zA-Z[a-zA-Z0-9_]* as a string
          DECIMAL --- a decimal constant [0-9]+ as a string
 
-    *)
+     *)
+    let make_binop op = fun x y -> Binop(op, x, y)
+    let make_binop_list ops = List.map (fun op -> ostap ($(op)), make_binop op) ops
+
     ostap (
       parse: expr;
       expr:
         !(Ostap.Util.expr
             (fun x -> x)
             [|
-              `Lefta , [ostap ("!!"), (fun x y -> Binop ("!!", x, y));
-                        ostap ("&&"), (fun x y -> Binop ("&&", x, y))];
-              `Nona ,  [ostap (">"), (fun x y -> Binop (">", x, y));
-                        ostap (">="), (fun x y -> Binop (">=", x, y));
-                        ostap ("<"), (fun x y -> Binop ("<", x, y));
-                        ostap ("<="), (fun x y -> Binop ("<=", x, y))];
-              `Lefta , [ostap ("+"), (fun x y -> Binop ("+", x, y));
-                        ostap ("-"), (fun x y -> Binop ("-", x, y))];
-              `Lefta , [ostap ("*"), (fun x y -> Binop ("*", x, y));
-                        ostap ("/"), (fun x y -> Binop ("/", x, y));
-                        ostap ("%"), (fun x y -> Binop ("%", x, y))];
+              `Lefta , make_binop_list ["!!"];
+              `Lefta , make_binop_list ["&&"];
+              `Nona  , make_binop_list [">="; ">"; "<="; "<"; "!="; "=="];
+              `Lefta , make_binop_list ["+"; "-"];
+              `Lefta , make_binop_list ["*"; "/"; "%"];
             |]
             primary
         );
@@ -148,12 +145,12 @@ module Stmt =
 
     (* Statement parser *)
     ostap (
-      parse  : stmt | seq;
+      parse  : seq | stmt;
       stmt   : read | write | assign;
-      read   : -"read" -"(" var:IDENT -")" {Read var};
-      write  : -"write" -"(" expr:!(Expr.parse) -")" {Write expr};
+      read   : "read"  -"(" var:IDENT -")" {Read var};
+      write  : "write" -"(" expr:!(Expr.parse) -")" {Write expr};
       assign : var:IDENT -":=" expr:!(Expr.parse) {Assign (var, expr)};
-      seq    : lval:stmt ";" rval:stmt {Seq (lval, rval)}
+      seq    : lval:stmt -";" rval:stmt {Seq (lval, rval)}
     )
 
   end
