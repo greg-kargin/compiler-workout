@@ -150,7 +150,7 @@ module Stmt =
       read   : "read"  -"(" var:IDENT -")" {Read var};
       write  : "write" -"(" expr:!(Expr.parse) -")" {Write expr};
       assign : var:IDENT -":=" expr:!(Expr.parse) {Assign (var, expr)};
-      seq    : lval:stmt -";" rval:stmt {Seq (lval, rval)}
+      seq    : lval:stmt -";" rval:parse {Seq (lval, rval)}
     )
 
   end
