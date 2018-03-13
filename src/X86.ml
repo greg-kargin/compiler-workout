@@ -102,10 +102,10 @@ let compile_insn env insn =
      env, [Call "Lread"; Mov (eax, s)]
   | LD x ->
      let s, env = (env#global x)#allocate in
-     env, [Mov (M (env#loc x), s)]
+     env, [Mov (M (env#loc x), eax); Mov (eax, s)]
   | ST x ->
      let s, env = (env#global x)#pop in
-     env, [Mov (s, M (env#loc x))]
+     env, [Mov (s, eax); Mov (eax, M (env#loc x))]
   | BINOP op ->
      let s1, s2, env = env#pop2 in
      let s, env = env#allocate in
