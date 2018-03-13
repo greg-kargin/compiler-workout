@@ -30,8 +30,8 @@ let exec_insn c p =
   let (s, i, o) = sc in
   match p with
     BINOP op -> (match st with
-                   s1 :: s2 :: st' -> let r = (Language.Expr.eval_binop op) s1 s2 in
-                                      (r :: st, sc)
+                   s2 :: s1 :: st' -> let r = (Language.Expr.eval_binop op) s1 s2 in
+                                      (r :: st', sc)
                  | _ -> failwith "not enough elements on stack")
   | CONST z -> (z :: st, sc)
   | READ -> let i_hd = List.hd i in
