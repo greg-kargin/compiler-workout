@@ -111,7 +111,7 @@ let compile_insn env insn =
      let s, env = env#allocate in
      match op with
      | "+" | "-" | "*" ->
-        env, [Mov (s1, eax); Binop (op, eax, s2); Mov (eax, s)]
+        env, [Mov (s2, eax); Binop (op, s1, eax); Mov (eax, s2)]
      | "/" ->
         env, [Mov (s2, eax); Cltd; IDiv s1; Mov (eax, s)]
      | "%" ->
