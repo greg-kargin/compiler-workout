@@ -115,7 +115,7 @@ let compile_insn env insn =
   | BINOP op ->
      let s1, s2, env = env#pop2 in
      let s, env = env#allocate in
-     match op with
+     (match op with
      | "+" | "-" | "*" ->
         env, [Mov (s2, eax); Binop (op, s1, eax); Mov (eax, s2)]
      | "/" ->
@@ -128,7 +128,13 @@ let compile_insn env insn =
      | "&&" | "!!" ->
         env, [Mov (L 0, eax); Mov (L 0, edx); Binop ("cmp", L 0, s1);
               Set ("nz", "%al"); Binop ("cmp", L 0, s2); Set ("nz", "%dl");
-              Binop (op, eax, edx);  Mov (edx, s)]
+              Binop (op, eax, edx);  Mov (edx, s)])
+  | LABEL label -> env, [Label label]
+  | JMP label -> env, [Jmp label]
+  | CJMP (condition, label) ->
+     let s, res_env = env#pop in
+     res_env, [Binop("cmp", L 0, s); CJmp(condition, label)]
+
 
 let rec compile env insns =
   match insns with
