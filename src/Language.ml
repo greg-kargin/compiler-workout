@@ -15,21 +15,27 @@ module State =
     type t = {g : string -> int; l : string -> int; scope : string list}
 
     (* Empty state *)
-    let empty = failwith "Not implemented"
+    let empty = let fail = fun x -> failwith (Printf.sprintf "Undefined variable %s" x) in
+                {g = fail; l = fail; scope = []}
 
     (* Update: non-destructively "modifies" the state s by binding the variable x
        to value v and returns the new state w.r.t. a scope
     *)
-    let update x v s = failwith "Not implemented"
+    let update x v s =
+      let update_scope s' x = fun y -> if x = y then v else s' y in
+      if List.mem x s.scope then
+        {g = s.g; l = update_scope s.l x; scope = s.scope}
+      else
+        {g = update_scope s.g x; l = s.l; scope = s.scope}
 
     (* Evals a variable in a state w.r.t. a scope *)
-    let eval s x = failwith "Not implemented"
+    let eval s x = if List.mem x s.scope then s.l x else s.g x
 
     (* Creates a new scope, based on a given state *)
-    let enter st xs = failwith "Not implemented"
+    let enter st xs = {g = st.g; l = empty.l; scope = xs}
 
     (* Drops a scope *)
-    let leave st st' = failwith "Not implemented"
+    let leave st st' = {g = st.g; l = st'.l; scope = st'.scope}
 
   end
 
@@ -83,7 +89,7 @@ module Expr =
     let rec eval st expr =
       match expr with
       | Const n -> n
-      | Var   x -> st x
+      | Var   x -> State.eval st x
       | Binop (op, x, y) -> to_func op (eval st x) (eval st y)
 
     (* Expression parser. You can use the following terminals:
@@ -138,23 +144,32 @@ module Stmt =
 
        Takes a configuration and a statement, and returns another configuration
      *)
-    let rec eval ((st, i, o) as conf) stmt =
+    let rec eval env ((st, i, o) as conf) stmt =
       match stmt with
-      | Read    x       -> (match i with z::i' -> (Expr.update x z st, i', o) | _ -> failwith "Unexpected end of input")
+      | Read    x       -> (match i with z::i' -> (State.update x z st, i', o)
+                                       | _ -> failwith "Unexpected end of input")
       | Write   e       -> (st, i, o @ [Expr.eval st e])
-      | Assign (x, e)   -> (Expr.update x (Expr.eval st e) st, i, o)
-      | Seq    (s1, s2) -> eval (eval conf s1) s2
+      | Assign (x, e)   -> (State.update x (Expr.eval st e) st, i, o)
+      | Seq    (s1, s2) -> eval env (eval env conf s1) s2
       | Skip -> conf
       | If (e, s1, s2) -> if Expr.eval st e != 0
-                          then eval conf s1
-                          else eval conf s2
+                          then eval env conf s1
+                          else eval env conf s2
       | While (e, s)   -> if Expr.eval st e != 0
-                          then eval (eval conf s) stmt
+                          then eval env (eval env conf s) stmt
                           else conf
-      | RepeatUntil (s, e) -> let ((st', i', o') as conf') = eval conf s in
-                              if Expr.eval st' e != 0
-                              then eval conf' stmt
-                              else conf'
+      | Repeat (s, e) -> let ((st', i', o') as conf') = eval env conf s in
+                         if Expr.eval st' e = 0
+                         then eval env conf' stmt
+                         else conf'
+      | Call (fun_name, fun_args) ->
+         let (fun_params, fun_locals, fun_body) = env#definition fun_name in
+         let st' = State.enter st (fun_params @ fun_locals) in
+         let assign_vals = fun acc_st param exp ->
+           State.update param (Expr.eval st exp) acc_st in
+         let fun_st = List.fold_left2 assign_vals st' fun_params fun_args in
+         let (res_st, res_i, res_o) = eval env (fun_st, i, o) fun_body in
+         ((State.leave res_st st), res_i, res_o)
 
     ostap (
       parse : seq | stmt;
@@ -189,7 +204,9 @@ module Stmt =
 
       repeat : %"repeat" s:parse
                %"until" e:!(Expr.parse)
-                  { RepeatUntil (s, e) }
+                  { Repeat (s, e) };
+      fun_call : fun_name:IDENT -"(" fun_args:!(Expr.parse)* -")"
+                    { Call(fun_name, fun_args) }
     )
 
   end
@@ -202,7 +219,8 @@ module Definition =
     type t = string * (string list * string list * Stmt.t)
 
     ostap (
-      parse: empty {failwith "Not implemented"}
+      parse: %"fun" fun_name:IDENT -"(" fun_params:(IDENT)* -")" fun_locals:(%"local" (IDENT)*)? -"{" s:!(Stmt.parse) -"}"
+                                                                                                                         { (fun_name, (fun_params, (match fun_locals with None -> [] | Some xs -> xs), s)) }
     )
 
   end
@@ -218,7 +236,13 @@ type t = Definition.t list * Stmt.t
 
    Takes a program and its input stream, and returns the output stream
 *)
-let eval (defs, body) i = failwith "Not implemented"
+let eval (defs, body) i =
+  let module M = Map.Make (String) in
+  let m = List.fold_left (fun acc_map (fun_name, fun_def) -> M.add fun_name fun_def acc_map) M.empty defs in
+  let (_, _, res_o) = Stmt.eval (object method definition f = M.find f m end) (State.empty, i, []) body in
+  res_o
 
 (* Top-level parser *)
-let parse = Stmt.parse
+ostap (
+  parse: !(Definition.parse)* !(Stmt.parse)
+)

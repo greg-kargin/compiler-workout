@@ -32,31 +32,31 @@ type config = (prg * State.t) list * int list * Stmt.config
    environment is used to locate a label to jump to (via method env#labeled <label_name>)
  *)
 
-let rec eval env ((stack, ((st, i, output) as c)) as conf) = function
+let rec eval env ((cstack, stack, ((st, i, output) as c)) as conf) = function
   | [] -> conf
   | insn::rest ->
      match insn with
      | BINOP op ->
         let (y::x::stack') = stack in
-        eval env (Expr.to_func op x y::stack', c) rest
+        eval env (cstack, (Expr.to_func op x y::stack'), c) rest
 
      | READ ->
         let (z::i') = i in
-        eval env (z::stack, (st, i', output)) rest
+        eval env (cstack , z::stack, (st, i', output)) rest
 
      | WRITE ->
         let (z::stack') = stack in
-        eval env (stack', (st, i, output @ [z])) rest
+        eval env (cstack, stack', (st, i, output @ [z])) rest
 
      | CONST i ->
-        eval env (i::stack, c) rest
+        eval env (cstack, i::stack, c) rest
 
      | LD x ->
-        eval env (st x::stack, c) rest
+        eval env (cstack, (State.eval st x)::stack, c) rest
 
      | ST x ->
         let (z::stack') = stack in
-        eval env (stack', (Expr.update x z st, i, output)) rest
+        eval env (cstack, stack', (State.update x z st, i, output)) rest
 
      | LABEL l ->
         eval env conf rest
@@ -70,7 +70,18 @@ let rec eval env ((stack, ((st, i, output) as c)) as conf) = function
                    then env#labeled label
                    else rest)
         in
-        eval env (stack', c) prg
+        eval env (cstack, stack', c) prg
+     | CALL l -> eval env (((rest, st)::cstack), stack, c) (env#labeled l)
+     | BEGIN (fun_params, fun_locals) ->
+        let assign_val = fun x ((v :: stack), st) -> (stack, State.update x v st) in
+        let (stack', st') = List.fold_right assign_val fun_params (stack, State.enter st (fun_params @ fun_locals)) in
+        eval env (cstack, stack', (st', i, output)) rest
+     | END ->
+        begin
+          match cstack with
+          | (prog, st') :: cs_tail -> eval env (cs_tail, stack, (State.leave st st', i, output)) prog
+          | [] -> conf
+        end
 
 (* Top-level evaluation
 
@@ -115,8 +126,8 @@ let rec compile pr =
   | Stmt.Write e -> (compile_expr e) @ [WRITE]
   | Stmt.Seq (s1, s2) -> (compile s1) @ (compile s2)
   | Stmt.Skip -> []
-  | Stmt.RepeatUntil (s, e) -> let label = unique_label#get in
-                               [LABEL label] @ (compile s) @ (compile_expr e) @ [CJMP ("nz", label)]
+  | Stmt.Repeat (s, e) -> let label = unique_label#get in
+                          [LABEL label] @ (compile s) @ (compile_expr e) @ [CJMP ("nz", label)]
   | Stmt.While (e, s) -> let label1 = unique_label#get in
                          let label2 = unique_label#get in
                          [LABEL label1] @ compile_expr e @ [CJMP ("z", label2)] @
@@ -126,3 +137,10 @@ let rec compile pr =
                            compile_expr e @ [CJMP ("z", label1)] @
                              compile s1 @ [JMP label2; LABEL label1] @
                                compile s2 @ [LABEL label2]
+  | Stmt.Call (fun_name, fun_args) -> List.concat (List.map compile_expr (List.rev fun_args)) @ [CALL fun_name]
+
+let rec compile_def (fun_name, (fun_params, fun_locals, fun_body)) =
+   [LABEL fun_name; BEGIN (fun_params, fun_locals)] @ compile fun_body @ [END]
+
+ let compile (defs, p) =
+   [LABEL "main"] @ compile p @ [END] @ List.concat (List.map compile_def defs)
