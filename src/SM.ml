@@ -139,6 +139,11 @@ let rec compile pr =
                              compile s1 @ [JMP label2; LABEL label1] @
                                compile s2 @ [LABEL label2]
   | Stmt.Call (fun_name, fun_args) -> List.concat (List.map compile_expr (List.rev fun_args)) @ [CALL fun_name]
+  | Stmt.Return opt_res -> (
+    match opt_res with
+    | Some res -> (compile_expr res) @ [END]
+    | _ -> [END]
+  )
 
 let rec compile_def (fun_name, (fun_params, fun_locals, fun_body)) =
    [LABEL fun_name; BEGIN (fun_params, fun_locals)] @ compile fun_body @ [END]
