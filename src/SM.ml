@@ -72,12 +72,12 @@ let rec eval env ((cstack, stack, ((st, i, output) as c)) as conf) = function
                    else rest)
         in
         eval env (cstack, stack', c) prg
-     | CALL l -> eval env (((rest, st)::cstack), stack, c) (env#labeled l)
-     | BEGIN (fun_params, fun_locals) ->
+     | CALL (l, _, _) -> eval env (((rest, st)::cstack), stack, c) (env#labeled l)
+     | BEGIN (_, fun_params, fun_locals) ->
         let assign_val = fun x ((v :: stack), st) -> (stack, State.update x v st) in
         let (stack', st') = List.fold_right assign_val fun_params (stack, State.enter st (fun_params @ fun_locals)) in
         eval env (cstack, stack', (st', i, output)) rest
-     | END ->
+     | END | RET _ ->
         begin
           match cstack with
           | (prog, st') :: cs_tail -> eval env (cs_tail, stack, (State.leave st st', i, output)) prog
@@ -138,7 +138,7 @@ let rec compile pr =
                            compile_expr e @ [CJMP ("z", label1)] @
                              compile s1 @ [JMP label2; LABEL label1] @
                                compile s2 @ [LABEL label2]
-  | Stmt.Call (fun_name, fun_args) -> List.concat (List.map compile_expr (List.rev fun_args)) @ [CALL fun_name]
+  | Stmt.Call (fun_name, fun_args) -> List.concat (List.map compile_expr (List.rev fun_args)) @ [CALL (fun_name, List.length fun_args, true)]
   | Stmt.Return opt_res -> (
     match opt_res with
     | Some res -> (compile_expr res) @ [END]
@@ -146,7 +146,7 @@ let rec compile pr =
   )
 
 let rec compile_def (fun_name, (fun_params, fun_locals, fun_body)) =
-   [LABEL fun_name; BEGIN (fun_params, fun_locals)] @ compile fun_body @ [END]
+   [LABEL fun_name; BEGIN (fun_name, fun_params, fun_locals)] @ compile fun_body @ [END]
 
  let compile (defs, p) =
    [LABEL "main"] @ compile p @ [END] @ List.concat (List.map compile_def defs)

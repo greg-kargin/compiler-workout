@@ -99,6 +99,8 @@ let get_suf = function
   | "==" -> "e"
   | "!=" -> "ne"
 
+let stack_ l = List.map (fun x -> Push x) l
+
 let compile_insn env insn =
   match insn with
   | CONST v ->
@@ -112,10 +114,10 @@ let compile_insn env insn =
      env, [Call "Lread"; Mov (eax, s)]
   | LD x ->
      let s, env = (env#global x)#allocate in
-     env, [Mov (M (env#loc x), eax); Mov (eax, s)]
+     env, [Mov (env#loc x, eax); Mov (eax, s)]
   | ST x ->
      let s, env = (env#global x)#pop in
-     env, [Mov (s, eax); Mov (eax, M (env#loc x))]
+     env, [Mov (s, eax); Mov (eax, env#loc x)]
   | BINOP op ->
      let s1, s2, env = env#pop2 in
      let s, env = env#allocate in
@@ -138,6 +140,29 @@ let compile_insn env insn =
   | CJMP (condition, label) ->
      let s, res_env = env#pop in
      res_env, [Binop("cmp", L 0, s); CJmp(condition, label)]
+  | BEGIN (fun_name, fun_params, fun_locals) ->
+     let res_env = env#enter fun_name fun_params fun_locals in
+     res_env, [Push ebp; Mov(esp, ebp); Binop("-", M ("$" ^ res_env#lsize), esp)]
+  | END ->
+     let s = Printf.sprintf "\t.set %s, %d" env#lsize (env#allocated * word_size) in
+     env, [Label env#epilogue; Mov (ebp, esp); Pop ebp; Ret; Meta s]
+  | RET has_res ->
+     if has_res then
+       let res, res_env = env#pop in res_env, [Mov (res, eax); Jmp res_env#epilogue]
+     else env, [Jmp env#epilogue]
+  | CALL (fun_name, n, is_proc) ->
+     let rec get_args env args n =
+       match n with
+       | 0 -> env, args
+       | i -> let param, env = env#pop in get_args env (param :: args) (i - 1)
+     in
+     let env, args = get_args env [] n in
+     let res_env, res = if is_proc then env, [] else let link, env = env#allocate in env, [Mov (eax, link)]
+     in res_env, (stack_ env#live_registers)
+                 @ (stack_ (List.rev args))
+                 @ [Call fun_name;Binop ("+", L (n * word_size), esp)]
+                 @ (List.rev_map (fun x -> Pop x) env#live_registers)
+                 @ res
 
 
 let rec compile env insns =
@@ -151,8 +176,12 @@ let rec compile env insns =
 (* A set of strings *)
 module S = Set.Make (String)
 
+let init n f =
+  let rec _init iter n f = if iter < n then (f iter) :: (_init (iter + 1) n f) else []
+  in _init 0 n f
+
 (* Environment implementation *)
-let make_assoc l = List.combine l (List.init (List.length l) (fun x -> x))
+let make_assoc l = List.combine l (init (List.length l) (fun x -> x))
 
 class env =
   object (self)
