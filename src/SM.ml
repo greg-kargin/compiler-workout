@@ -39,7 +39,7 @@ let rec eval env ((cstack, stack, ((st, i, output) as c)) as conf) = function
      match insn with
      | BINOP op ->
         let (y::x::stack') = stack in
-        eval env (cstack, (Expr.to_func op x y::stack'), c) rest
+        eval env (cstack, (Expr.to_func op x y) :: stack', c) rest
 
      | READ ->
         let (z::i') = i in
