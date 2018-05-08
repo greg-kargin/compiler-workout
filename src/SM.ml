@@ -120,6 +120,8 @@ let rec compile pr =
     | Expr.Var   x          -> [LD x]
     | Expr.Const n          -> [CONST n]
     | Expr.Binop (op, x, y) -> compile_expr x @ compile_expr y @ [BINOP op]
+    | Expr.Call (fun_name, fun_args) ->
+       List.concat (List.map compile_expr fun_args) @ [CALL (fun_name, List.length fun_args, false)]
   in
   match pr with
   | Stmt.Assign (x, e) -> (compile_expr e) @ [ST x]
@@ -149,4 +151,4 @@ let rec compile_def (fun_name, (fun_params, fun_locals, fun_body)) =
    [LABEL fun_name; BEGIN (fun_name, fun_params, fun_locals)] @ compile fun_body @ [END]
 
  let compile (defs, p) =
-   [LABEL "main"] @ compile p @ [END] @ List.concat (List.map compile_def defs)
+   compile p @ [END] @ List.concat (List.map compile_def defs)
