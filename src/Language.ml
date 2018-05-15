@@ -222,13 +222,13 @@ module Expr =
 
       primary:
         n:DECIMAL {Const n}
+        | fun_name:IDENT -"("
+          fun_args:!(Util.list0)[parse] -")"
+          { Call (fun_name, fun_args) }
         | c:CHAR { Const (Char.code c) }
         | s:STRING { String (String.sub s 1 (String.length s-2)) }
         | "[" elems:!(Util.list0)[parse] "]" { Array elems }
         | x:IDENT   {Var x}
-        | fun_name:IDENT -"("
-          fun_args:!(Util.list0)[parse] -")"
-          { Call (fun_name, fun_args) }
         | -"(" parse -")"
     )
   end
