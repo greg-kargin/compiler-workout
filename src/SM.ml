@@ -171,7 +171,7 @@ let rec compile pr =
                            compile_expr e @ [CJMP ("z", label1)] @
                              compile s1 @ [JMP label2; LABEL label1] @
                                compile s2 @ [LABEL label2]
-  | Stmt.Call (fun_name, fun_args) -> List.concat (List.map compile_expr (List.rev fun_args)) @ [CALL (fun_name, List.length fun_args, false)]
+  | Stmt.Call (fun_name, fun_args) -> List.concat (List.map compile_expr (List.rev fun_args)) @ [CALL (fun_name, List.length fun_args, true)]
   | Stmt.Return opt_res -> (
     match opt_res with
     | Some res -> (compile_expr res) @ [RET true]
