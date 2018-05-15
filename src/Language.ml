@@ -303,7 +303,6 @@ module Stmt =
     ostap (
       parse : seq | stmt;
       stmt  : assign | skip | if_ | while_ | repeat | for_;
-      assign: arr:IDENT ids:(-"[" !(Expr.parse) -"]")* ":=" exp:!(Expr.parse) {Assign (arr, ids, exp)};
       seq   : s1:stmt -";" s2:parse { Seq(s1, s2) };
       skip  : %"skip" { Skip };
 
@@ -334,7 +333,9 @@ module Stmt =
                   { Repeat (s, e) };
       fun_call : fun_name:IDENT -"(" fun_args:!(Expr.parse)* -")"
                                                                 { Call(fun_name, fun_args) };
-      return   : %"return" res:!(Expr.parse)? { Return res }
+      return   : %"return" res:!(Expr.parse)? { Return res };
+      assign   : arr:IDENT ids:(-"[" !(Expr.parse) -"]")* ":=" exp:!(Expr.parse) {Assign (arr, ids, exp)}
+
     )
   end
 
