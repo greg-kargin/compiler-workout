@@ -177,11 +177,8 @@ module Expr =
          let (st', i', o', Some e2) = eval env conf' y in
          (st', i', o', Some (Value.of_int (to_func op (Value.to_int e1) (Value.to_int e2))))
       | Call (fun_name, fun_args) ->
-         let eval_args (conf, acc) arg =
-           let ((_, _, _, Some v) as conf') = eval env conf arg in
-           (conf', v::acc) in
-         let conf', arg_vals = List.fold_left eval_args (conf, []) fun_args in
-         env#definition env fun_name (List.rev arg_vals) conf'
+         let (st', i', o', args) = eval_list env conf fun_args in
+         env#definition env fun_name args (st', i', o', None)
 
 
     and eval_list env conf xs =

@@ -78,7 +78,10 @@ let rec eval env ((cstack, stack, ((st, i, output) as c)) as conf) = function
                    else rest)
         in
         eval env (cstack, stack', c) prg
-     | CALL (l, _, _) -> eval env (((rest, st)::cstack), stack, c) (env#labeled l)
+     | CALL (fun_name, args_len, is_proc) ->
+        if env#is_label fun_name
+        then let cstack' = ((rest, st)::cstack) in eval env (cstack', stack, c) (env#labeled fun_name)
+        else eval env (env#builtin conf fun_name args_len is_proc) rest
      | BEGIN (_, fun_params, fun_locals) ->
         let assign_val = fun x ((v :: stack), st) -> (stack, State.update x v st) in
         let (stack', st') = List.fold_right assign_val fun_params (stack, State.enter st (fun_params @ fun_locals)) in
