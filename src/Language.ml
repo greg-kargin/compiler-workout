@@ -302,7 +302,7 @@ module Stmt =
     (* Statement parser *)
     ostap (
       parse : seq | stmt;
-      stmt  : assign | skip | if_ | while_ | repeat | for_;
+      stmt  : assign | skip | if_ | while_ | repeat | for_ | return | fun_call ;
       seq   : s1:stmt -";" s2:parse { Seq(s1, s2) };
       skip  : %"skip" { Skip };
 
