@@ -2,14 +2,3 @@
 *.cmi
 *.cmx
 *.o
-*.s
-
-*.log
-
-test*
-generated*
-
-.idea/*
-
-rc.opt
-.depend
