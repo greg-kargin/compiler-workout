@@ -98,6 +98,9 @@ let get_suf = function
   | "<=" -> "le"
   | "==" -> "e"
   | "!=" -> "ne"
+  | ">=" -> "ge"
+  | ">"  -> "g"
+  | _    -> failwith "unknown operator"
 
 let stack_ l = List.map (fun x -> Push x) l
 
@@ -106,12 +109,6 @@ let compile_insn env insn =
   | CONST v ->
      let s, env = env#allocate in
      env, [Mov (L v, s)]
-  | WRITE ->
-     let s, env = env#pop in
-     env, [Push s; Call "Lwrite"; Pop eax]
-  | READ ->
-     let s, env = env#allocate in
-     env, [Call "Lread"; Mov (eax, s)]
   | LD x ->
      let s, env = (env#global x)#allocate in
      env, [Mov (env#loc x, eax); Mov (eax, s)]

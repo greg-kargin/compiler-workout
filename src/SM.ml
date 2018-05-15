@@ -3,27 +3,27 @@ open Language
 
 (* The type for the stack machine instructions *)
 @type insn =
-(* binary operator                 *) | BINOP of string
-(* put a constant on the stack     *) | CONST of int
-(* read to stack                   *) | READ
-(* write from stack                *) | WRITE
-(* load a variable to the stack    *) | LD    of string
-(* store a variable from the stack *) | ST    of string
-(* a label                         *) | LABEL of string
-(* unconditional jump              *) | JMP   of string
-(* conditional jump                *) | CJMP  of string * string
-(* begins procedure definition     *) | BEGIN of string * string list * string list
+(* binary operator                 *) | BINOP   of string
+(* put a constant on the stack     *) | CONST   of int
+(* put a string on the stack       *) | STRING  of string
+(* load a variable to the stack    *) | LD      of string
+(* store a variable from the stack *) | ST      of string
+(* store in an array               *) | STA     of string * int
+(* a label                         *) | LABEL   of string
+(* unconditional jump              *) | JMP     of string
+(* conditional jump                *) | CJMP    of string * string
+(* begins procedure definition     *) | BEGIN   of string * string list * string list
 (* end procedure definition        *) | END
-(* calls a function/procedure      *) | CALL  of string * int * bool
-(* returns from a function         *) | RET   of bool with show
+(* calls a function/procedure      *) | CALL    of string * int * bool
+(* returns from a function         *) | RET     of bool with show
 
 (* The type for the stack machine program *)
 type prg = insn list
 
 (* The type for the stack machine configuration: control stack, stack and configuration from statement
    interpreter
- *)
-type config = (prg * State.t) list * int list * Expr.config
+*)
+type config = (prg * State.t) list * Value.t list * Expr.config
 
 (* Stack machine interpreter
 
@@ -33,24 +33,26 @@ type config = (prg * State.t) list * int list * Expr.config
    environment is used to locate a label to jump to (via method env#labeled <label_name>)
  *)
 
+let split n l =
+  let rec unzip (taken, rest) = function
+  | 0 -> (List.rev taken, rest)
+  | n -> let h::tl = rest in unzip (h::taken, tl) (n-1)
+  in
+  unzip ([], l) n
+
 let rec eval env ((cstack, stack, ((st, i, output) as c)) as conf) = function
   | [] -> conf
   | insn::rest ->
      match insn with
      | BINOP op ->
         let (y::x::stack') = stack in
-        eval env (cstack, (Expr.to_func op x y) :: stack', c) rest
-
-     | READ ->
-        let (z::i') = i in
-        eval env (cstack , z::stack, (st, i', output)) rest
-
-     | WRITE ->
-        let (z::stack') = stack in
-        eval env (cstack, stack', (st, i, output @ [z])) rest
+        eval env (cstack, Value.of_int (Expr.to_func op (Value.to_int x) (Value.to_int y)) :: stack', c) rest
 
      | CONST i ->
-        eval env (cstack, i::stack, c) rest
+        eval env (cstack, (Value.of_int i)::stack, c) rest
+
+     | STRING s ->
+        eval env (cstack, (Value.of_string s)::stack, c) rest
 
      | LD x ->
         eval env (cstack, (State.eval st x)::stack, c) rest
@@ -58,6 +60,10 @@ let rec eval env ((cstack, stack, ((st, i, output) as c)) as conf) = function
      | ST x ->
         let (z::stack') = stack in
         eval env (cstack, stack', (State.update x z st, i, output)) rest
+
+     | STA (arr, len) ->
+        let id::ids, stack' = split (len + 1) stack in
+        eval env (cstack, stack', (Language.Stmt.update st arr id (List.rev ids), i, output)) rest
 
      | LABEL l ->
         eval env conf rest
@@ -67,7 +73,7 @@ let rec eval env ((cstack, stack, ((st, i, output) as c)) as conf) = function
 
      | CJMP (cond, label) ->
         let (top::stack') = stack in
-        let prg = (if (cond = "z" && top = 0) || (cond = "nz" && top != 0)
+        let prg = (if (cond = "z" && (Value.to_int top) = 0) || (cond = "nz" && (Value.to_int top) != 0)
                    then env#labeled label
                    else rest)
         in
@@ -89,7 +95,8 @@ let rec eval env ((cstack, stack, ((st, i, output) as c)) as conf) = function
      val run : prg -> int list -> int list
 
    Takes a program, an input stream, and returns an output stream this program calculates
-*)
+ *)
+
 let run p i =
   let module M = Map.Make (String) in
   let rec make_map m = function
@@ -98,7 +105,24 @@ let run p i =
   | _ :: tl         -> make_map m tl
   in
   let m = make_map M.empty p in
-  let (_, _, (_, _, o)) = eval (object method labeled l = M.find l m end) ([], [], (State.empty, i, [])) p in o
+  let (_, _, (_, _, o)) =
+    eval
+      (object
+         method is_label l = M.mem l m
+         method labeled l = M.find l m
+         method builtin (cstack, stack, (st, i, o)) f n p =
+           let f = match f.[0] with 'L' -> String.sub f 1 (String.length f - 1) | _ -> f in
+           let args, stack' = split n stack in
+           let (st, i, o, r) = Language.Builtin.eval (st, i, o, None) (List.rev args) f in
+           let stack'' = if p then stack' else let Some r = r in r::stack' in
+           Printf.printf "Builtin: %s\n";
+           (cstack, stack'', (st, i, o))
+       end
+      )
+      ([], [], (State.empty, i, []))
+      p
+  in
+  o
 
 (* Stack machine compiler
 
@@ -119,14 +143,18 @@ let rec compile pr =
   let rec compile_expr = function
     | Expr.Var   x          -> [LD x]
     | Expr.Const n          -> [CONST n]
+    | Expr.String s         -> [STRING s]
     | Expr.Binop (op, x, y) -> compile_expr x @ compile_expr y @ [BINOP op]
     | Expr.Call (fun_name, fun_args) ->
        List.concat (List.map compile_expr fun_args) @ [CALL (fun_name, List.length fun_args, false)]
+    | Expr.Array elems -> List.concat (List.map compile_expr elems) @ [CALL ("$array", List.length elems, false)]
+    | Expr.Elem (arr, i) -> compile_expr arr @ compile_expr i @ [CALL ("$elem", 2, false)]
+    | Expr.Length s -> compile_expr s @ [CALL ("$length", 1, false)]
+
   in
   match pr with
-  | Stmt.Assign (x, e) -> (compile_expr e) @ [ST x]
-  | Stmt.Read x -> [READ] @ [ST x]
-  | Stmt.Write e -> (compile_expr e) @ [WRITE]
+  | Stmt.Assign (x, [], e) -> (compile_expr e) @ [ST x]
+  | Stmt.Assign (x, ids, e) -> List.concat (List.map compile_expr (ids @ [e])) @ [STA (x, List.length ids)]
   | Stmt.Seq (s1, s2) -> (compile s1) @ (compile s2)
   | Stmt.Skip -> []
   | Stmt.Repeat (s, e) -> let label = unique_label#get in
